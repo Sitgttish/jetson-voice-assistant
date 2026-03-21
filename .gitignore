@@ -18,8 +18,9 @@ env/
 # Logs
 jetson/logs/
 
-# Model weights (large files — download on device)
+# Model weights and binaries (large files — download on device)
 jetson/models/
+piper-bin/
 *.gguf
 *.bin
 *.pt
