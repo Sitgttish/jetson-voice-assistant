@@ -83,7 +83,7 @@ def speak(tts: tts_module.TTSBase, player: audio_io.AudioPlayer,
 
 
 def main() -> None:
-    backend = "espeak" if args.espeak else "piper"
+    backend = "espeak" if args.espeak else config.TTS_BACKEND
 
     print("=" * 60)
     print("  Jetson Voice Assistant — TTS test")
