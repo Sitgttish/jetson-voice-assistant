@@ -75,12 +75,19 @@ class WhisperASR(ASRBase):
 
     def __init__(
         self,
-        model_size:   str = config.WHISPER_MODEL_SIZE,
-        device:       str = config.WHISPER_DEVICE,
-        compute_type: str = config.WHISPER_COMPUTE_TYPE,
-        language:     Optional[str] = config.WHISPER_LANGUAGE,
-        download_root: str = config.MODEL_DIR,
+        model_size:    Optional[str] = None,
+        device:        Optional[str] = None,
+        compute_type:  Optional[str] = None,
+        language:      Optional[str] = None,
+        download_root: Optional[str] = None,
     ):
+        # Read from config at call time, not at import time, so that
+        # test scripts can override config values before instantiating.
+        model_size    = model_size    or config.WHISPER_MODEL_SIZE
+        device        = device        or config.WHISPER_DEVICE
+        compute_type  = compute_type  or config.WHISPER_COMPUTE_TYPE
+        language      = language      or config.WHISPER_LANGUAGE
+        download_root = download_root or config.MODEL_DIR
         self.language = language
 
         logger.info(
