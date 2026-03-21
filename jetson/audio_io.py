@@ -1,79 +1,59 @@
 """
 audio_io.py — microphone recording and speaker playback via ALSA.
 
-Uses PyAudio so we can pass the raw ALSA device string from config.
-The AudioRecorder uses a simple energy-based VAD: it starts collecting
-audio once speech is detected, and stops after a configurable run of
-silent chunks — no extra dependencies needed.
+Uses arecord/aplay subprocesses with the ALSA device string from config.
+This avoids PyAudio's device-index scanning, which is unreliable on Jetson
+when the card index doesn't match the PortAudio enumeration order.
+
+arecord/aplay are part of alsa-utils and always respect plughw: strings
+including the plug layer that handles sample-rate conversion.
 """
 import audioop
-import logging
-import wave
 import io
-import time
-from typing import Optional
-
-import numpy as np
-import pyaudio
+import logging
+import subprocess
+import wave
 
 import config
 
 logger = logging.getLogger(__name__)
 
+# Bytes per chunk (int16 mono): CHUNK_FRAMES * 2 bytes/sample
+CHUNK_FRAMES = 512
+CHUNK_BYTES  = CHUNK_FRAMES * 2  # int16 = 2 bytes per sample
+
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Internal helpers
 # ---------------------------------------------------------------------------
 
-def _open_pyaudio_stream(pa: pyaudio.PyAudio, input: bool, output: bool):
-    """Open a PyAudio stream bound to the ALSA device in config."""
-    # PyAudio's 'input_device_index' expects an integer index, not a hw string.
-    # We locate the device by scanning available devices for the one whose
-    # hostApi name contains 'ALSA' and whose name contains the card/device
-    # numbers from config.ALSA_DEVICE ("plughw:2,0" → card 2 device 0).
-    target = config.ALSA_DEVICE  # e.g. "plughw:2,0"
-    # Extract card index from string like "plughw:2,0"
-    try:
-        card_str = target.split(":")[1].split(",")[0]
-        card_index = int(card_str)
-    except (IndexError, ValueError):
-        card_index = None
+def _arecord_cmd(duration_s: float | None = None) -> list[str]:
+    """Build the arecord command for the configured device."""
+    cmd = [
+        "arecord",
+        "-D", config.ALSA_DEVICE,
+        "-f", "S16_LE",
+        "-r", str(config.SAMPLE_RATE),
+        "-c", str(config.CHANNELS),
+        "-t", "raw",          # raw PCM on stdout, no WAV header
+        "--quiet",
+    ]
+    if duration_s is not None:
+        cmd += ["--duration", str(int(duration_s))]
+    return cmd
 
-    device_index: Optional[int] = None
-    for i in range(pa.get_device_count()):
-        info = pa.get_device_info_by_index(i)
-        # Match by card number embedded in the device name (ALSA names look
-        # like "HyperX 7.1 Audio: USB Audio (hw:2,0)" on Jetson).
-        name: str = info["name"]
-        if card_index is not None and f"hw:{card_index}," in name:
-            if input and info["maxInputChannels"] > 0:
-                device_index = i
-                break
-            if output and info["maxOutputChannels"] > 0:
-                device_index = i
-                break
 
-    if device_index is None:
-        logger.warning(
-            "Could not find PyAudio device matching %s; using default.", target
-        )
-
-    kwargs = dict(
-        format=pyaudio.paInt16,
-        channels=config.CHANNELS,
-        rate=config.SAMPLE_RATE,
-        frames_per_buffer=512,
-    )
-    if input:
-        kwargs["input"] = True
-        if device_index is not None:
-            kwargs["input_device_index"] = device_index
-    if output:
-        kwargs["output"] = True
-        if device_index is not None:
-            kwargs["output_device_index"] = device_index
-
-    return pa.open(**kwargs)
+def _aplay_cmd() -> list[str]:
+    """Build the aplay command for the configured device."""
+    return [
+        "aplay",
+        "-D", config.ALSA_DEVICE,
+        "-f", "S16_LE",
+        "-r", str(config.SAMPLE_RATE),
+        "-c", str(config.CHANNELS),
+        "-t", "raw",
+        "--quiet",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -82,46 +62,50 @@ def _open_pyaudio_stream(pa: pyaudio.PyAudio, input: bool, output: bool):
 
 class AudioRecorder:
     """
-    Records a single utterance from the microphone.
+    Records a single utterance from the microphone using arecord.
 
     Usage::
 
         recorder = AudioRecorder()
-        audio_bytes = recorder.record()   # blocks until end-of-speech
+        pcm_bytes = recorder.record()   # blocks until end-of-speech
 
-    Returns raw PCM bytes (int16, mono, 16 kHz) suitable for passing
-    directly to the ASR module.
+    Returns raw PCM bytes (int16, mono, config.SAMPLE_RATE Hz).
     """
-
-    CHUNK = 512  # frames per read; ~32 ms at 16 kHz
 
     def record(self) -> bytes:
         """
         Block until an utterance is complete and return raw PCM bytes.
 
-        The algorithm:
-        1. Wait for the RMS to exceed VAD_SILENCE_THRESHOLD (speech onset).
-        2. Collect audio until VAD_SILENCE_CHUNKS consecutive silent chunks
-           follow the speech (end of utterance).
-        3. Hard-stop after MAX_RECORD_SECONDS regardless.
+        Algorithm:
+        1. Spawn arecord, read raw PCM chunks from its stdout.
+        2. Wait for RMS > VAD_SILENCE_THRESHOLD (speech onset).
+        3. Collect until VAD_SILENCE_CHUNKS consecutive silent chunks
+           follow at least VAD_MIN_SPEECH_CHUNKS of speech.
+        4. Hard-stop after MAX_RECORD_SECONDS.
         """
-        pa = pyaudio.PyAudio()
-        stream = _open_pyaudio_stream(pa, input=True, output=False)
+        cmd = _arecord_cmd()
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
 
         frames: list[bytes] = []
-        silent_chunks   = 0
-        speech_chunks   = 0
-        recording       = False
-        max_chunks      = int(
-            config.MAX_RECORD_SECONDS * config.SAMPLE_RATE / self.CHUNK
-        )
+        silent_chunks  = 0
+        speech_chunks  = 0
+        recording      = False
+        max_chunks     = int(config.MAX_RECORD_SECONDS * config.SAMPLE_RATE
+                             / CHUNK_FRAMES)
 
         logger.info("Listening… (waiting for speech)")
 
         try:
             for _ in range(max_chunks):
-                chunk = stream.read(self.CHUNK, exception_on_overflow=False)
-                rms   = audioop.rms(chunk, 2)  # 2 bytes per int16 sample
+                chunk = proc.stdout.read(CHUNK_BYTES)
+                if not chunk:
+                    break
+
+                rms = audioop.rms(chunk, 2)
 
                 if rms > config.VAD_SILENCE_THRESHOLD:
                     if not recording:
@@ -141,17 +125,19 @@ class AudioRecorder:
                         logger.info("End of utterance detected.")
                         break
         finally:
-            stream.stop_stream()
-            stream.close()
-            pa.terminate()
+            proc.terminate()
+            proc.wait()
 
         if not frames:
             logger.warning("No speech captured.")
             return b""
 
         raw = b"".join(frames)
-        logger.debug("Recorded %d bytes (%.2f s)", len(raw),
-                     len(raw) / (config.SAMPLE_RATE * 2))
+        logger.debug(
+            "Recorded %d bytes (%.2f s)",
+            len(raw),
+            len(raw) / (config.SAMPLE_RATE * 2),
+        )
         return raw
 
 
@@ -161,62 +147,64 @@ class AudioRecorder:
 
 class AudioPlayer:
     """
-    Plays raw PCM or WAV bytes through the speaker.
+    Plays raw PCM or WAV bytes through the speaker using aplay.
 
     Usage::
 
         player = AudioPlayer()
-        player.play_pcm(raw_bytes)   # int16 mono 16 kHz
+        player.play_pcm(raw_bytes)   # int16 mono at config.SAMPLE_RATE
         player.play_wav(wav_bytes)   # WAV file bytes
     """
 
-    def play_pcm(self, pcm_bytes: bytes,
-                 sample_rate: int = config.SAMPLE_RATE) -> None:
-        """Play raw int16 mono PCM."""
+    def play_pcm(self, pcm_bytes: bytes) -> None:
+        """Play raw int16 mono PCM at config.SAMPLE_RATE."""
         if not pcm_bytes:
             return
-        pa = pyaudio.PyAudio()
-        stream = _open_pyaudio_stream(pa, input=False, output=True)
-        try:
-            stream.write(pcm_bytes)
-        finally:
-            stream.stop_stream()
-            stream.close()
-            pa.terminate()
+        proc = subprocess.Popen(
+            _aplay_cmd(),
+            stdin=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        proc.communicate(input=pcm_bytes)
 
     def play_wav(self, wav_bytes: bytes) -> None:
-        """Play WAV-format audio (as returned by most TTS engines)."""
+        """
+        Play WAV-format audio. Decodes the WAV header and plays raw PCM
+        so we stay within the aplay raw pipeline.
+        """
         if not wav_bytes:
             return
         buf = io.BytesIO(wav_bytes)
         with wave.open(buf, "rb") as wf:
-            pa = pyaudio.PyAudio()
-            stream = pa.open(
-                format=pa.get_format_from_width(wf.getsampwidth()),
-                channels=wf.getnchannels(),
-                rate=wf.getframerate(),
-                output=True,
-            )
-            try:
-                data = wf.readframes(1024)
-                while data:
-                    stream.write(data)
-                    data = wf.readframes(1024)
-            finally:
-                stream.stop_stream()
-                stream.close()
-                pa.terminate()
+            pcm = wf.readframes(wf.getnframes())
+            sr  = wf.getframerate()
+            ch  = wf.getnchannels()
+            sw  = wf.getsampwidth()
+
+        cmd = [
+            "aplay",
+            "-D", config.ALSA_DEVICE,
+            "-f", f"S{sw * 8}_LE",
+            "-r", str(sr),
+            "-c", str(ch),
+            "-t", "raw",
+            "--quiet",
+        ]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL)
+        proc.communicate(input=pcm)
 
 
 # ---------------------------------------------------------------------------
-# Utility: save PCM to WAV file (useful for debugging)
+# Utility
 # ---------------------------------------------------------------------------
 
 def save_pcm_as_wav(pcm_bytes: bytes, path: str,
                     sample_rate: int = config.SAMPLE_RATE) -> None:
+    """Save raw int16 mono PCM to a WAV file (useful for debugging)."""
     with wave.open(path, "wb") as wf:
         wf.setnchannels(config.CHANNELS)
-        wf.setsampwidth(2)  # int16 = 2 bytes
+        wf.setsampwidth(2)
         wf.setframerate(sample_rate)
         wf.writeframes(pcm_bytes)
     logger.debug("Saved WAV to %s", path)
