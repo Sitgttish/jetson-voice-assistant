@@ -37,14 +37,18 @@ WHISPER_COMPUTE_TYPE = "int8"
 WHISPER_LANGUAGE     = "en"   # set None for auto-detect (slower)
 
 # ---------------------------------------------------------------------------
-# TTS — Piper
+# TTS
 # ---------------------------------------------------------------------------
-# Voice model name — must match a file in MODEL_DIR:
-#   <name>.onnx and <name>.onnx.json
-# Downloaded automatically on first use if not present.
-# Browse voices: https://rhasspy.github.io/piper-samples/
-PIPER_VOICE      = "en_US-lessac-medium"
-# TTS output sample rate — Piper voices are usually 22050 Hz
+# "espeak" — espeak-ng subprocess (system package, works on all ARM64)
+# "piper"  — piper-tts neural TTS (piper-phonemize has no aarch64 wheel,
+#             so this will NOT work on Jetson Nano until a wheel is published)
+TTS_BACKEND      = "espeak"
+
+# espeak-ng settings
+ESPEAK_VOICE     = "en-us"
+ESPEAK_SPEED     = 150        # words per minute (default 175)
+
+# TTS output sample rate
 TTS_SAMPLE_RATE  = 22050
 
 # ---------------------------------------------------------------------------

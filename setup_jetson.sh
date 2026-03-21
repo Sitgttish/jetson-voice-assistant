@@ -72,7 +72,6 @@ pip install --quiet \
 pip install --quiet \
     numpy \
     faster-whisper \
-    piper-tts \
     requests
 
 # ---------------------------------------------------------------------------
@@ -115,9 +114,6 @@ echo "Setup complete."
 echo ""
 echo "Activate the venv:"
 echo "  source ~/voice-assistant-env/bin/activate"
-echo ""
-echo "Download the Piper TTS voice model (run once):"
-echo "  cd jetson/ && python3 -c \"from tts import PiperTTS; PiperTTS()\""
 echo ""
 echo "Test ASR:"
 echo "  cd jetson/ && python3 test_asr.py --save-wav"
