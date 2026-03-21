@@ -13,6 +13,7 @@ import io
 import logging
 import subprocess
 import wave
+from typing import Optional
 
 import config
 
@@ -27,7 +28,7 @@ CHUNK_BYTES  = CHUNK_FRAMES * 2  # int16 = 2 bytes per sample
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _arecord_cmd(duration_s: float | None = None) -> list[str]:
+def _arecord_cmd(duration_s: Optional[float] = None) -> list[str]:
     """Build the arecord command for the configured device."""
     cmd = [
         "arecord",
