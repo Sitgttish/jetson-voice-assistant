@@ -1,88 +1,126 @@
 #!/usr/bin/env bash
 # setup_jetson.sh — Install Jetson-side dependencies for the voice assistant.
-# Run once after cloning/copying the project to the Nano:
+# Run once after cloning the repo:
 #
 #   bash setup_jetson.sh
 #
-# Assumes:
-#   - JetPack 4.6.x (Ubuntu 18.04) or 5.x (Ubuntu 20.04)
-#   - Python 3.8+
-#   - pip3 available
-#   - CUDA toolkit already installed (comes with JetPack)
+# Tested on JetPack 4.6.x (Ubuntu 18.04, Python 3.6 stock).
+# Installs Python 3.8 via deadsnakes PPA and creates a venv at
+# ~/voice-assistant-env.
 
 set -euo pipefail
+
+VENV="$HOME/voice-assistant-env"
 
 echo "============================================================"
 echo "  Jetson Voice Assistant — dependency setup"
 echo "============================================================"
 
 # ---------------------------------------------------------------------------
-# System packages
+# 1. System packages
 # ---------------------------------------------------------------------------
-echo "[1/4] Installing system packages …"
+echo "[1/5] Installing system packages …"
 sudo apt-get update -qq
 sudo apt-get install -y \
     portaudio19-dev \
     libsndfile1 \
     ffmpeg \
+    alsa-utils \
+    espeak-ng \
     python3-pip \
     python3-dev \
     libasound2-dev
 
 # ---------------------------------------------------------------------------
-# Python packages — core
+# 2. Python 3.8 (JetPack 4.x ships 3.6 which is too old for faster-whisper)
 # ---------------------------------------------------------------------------
-echo "[2/4] Installing Python packages …"
-pip3 install --upgrade pip
-
-# PyAudio — binds to PortAudio / ALSA
-pip3 install pyaudio
-
-# numpy — audio array processing
-# JetPack 4.x (Python 3.6) tops out at 1.19.5; JetPack 5.x can go higher
-pip3 install "numpy>=1.19,<2.0"
+echo "[2/5] Installing Python 3.8 via deadsnakes PPA …"
+sudo add-apt-repository ppa:deadsnakes/ppa -y
+sudo apt-get update -qq
+sudo apt-get install -y python3.8 python3.8-venv python3.8-dev
 
 # ---------------------------------------------------------------------------
-# faster-whisper + CTranslate2
+# 3. Virtual environment
 # ---------------------------------------------------------------------------
-# CTranslate2 wheels for Jetson (ARM64 + CUDA) are published by the
-# ctranslate2 project. If a pre-built wheel isn't available for your
-# JetPack version you may need to build from source — see:
-#   https://github.com/OpenNMT/CTranslate2
+echo "[3/5] Creating venv at $VENV …"
+if [ -d "$VENV" ]; then
+    echo "  venv already exists — skipping creation"
+else
+    python3.8 -m venv "$VENV"
+fi
+
+# shellcheck disable=SC1090
+source "$VENV/bin/activate"
+pip install --upgrade pip --quiet
+
+# ---------------------------------------------------------------------------
+# 4. Python packages
 #
-# For JetPack 5.x (Python 3.8, CUDA 11.4):
-echo "[3/4] Installing faster-whisper …"
-pip3 install faster-whisper
+# Pin notes (discovered on JetPack 4.6 aarch64):
+#   tokenizers 0.21+ requires Rust to build — pin to 0.13.3 (has aarch64 wheel)
+#   huggingface_hub 0.26+ pulls in hf-xet which also requires Rust — pin <0.26
+#   ctranslate2 from PyPI has no CUDA support on aarch64 — CPU/int8 only
+# ---------------------------------------------------------------------------
+echo "[4/5] Installing Python packages …"
 
-# If the above fails with no matching distribution, try pinning an older
-# version that ships an ARM64 wheel:
-#   pip3 install faster-whisper==0.10.1
+# Pin Rust-free versions first so pip doesn't try to upgrade them
+pip install --quiet \
+    "tokenizers==0.13.3" \
+    "huggingface_hub<0.26"
+
+# Core packages
+pip install --quiet \
+    numpy \
+    faster-whisper \
+    piper-tts \
+    requests
 
 # ---------------------------------------------------------------------------
-# Optional: huggingface_hub for model download progress bars
+# 5. Verify
 # ---------------------------------------------------------------------------
-pip3 install huggingface_hub
-
-# ---------------------------------------------------------------------------
-# Verify
-# ---------------------------------------------------------------------------
-echo "[4/4] Verifying imports …"
+echo "[5/5] Verifying imports …"
 python3 - <<'EOF'
-import pyaudio; print("  pyaudio        OK")
-import numpy;   print("  numpy          OK")
+import importlib, sys
+
+checks = [
+    ("numpy",          "numpy"),
+    ("faster_whisper", "faster-whisper"),
+    ("piper",          "piper-tts"),
+    ("requests",       "requests"),
+]
+ok = True
+for mod, pkg in checks:
+    try:
+        importlib.import_module(mod)
+        print(f"  {pkg:<20} OK")
+    except ImportError as e:
+        print(f"  {pkg:<20} MISSING — {e}")
+        ok = False
+
+# espeak-ng via subprocess
+import subprocess
 try:
-    import faster_whisper; print("  faster_whisper OK")
-except ImportError as e:
-    print(f"  faster_whisper MISSING — {e}")
-    print("  You may need to build CTranslate2 from source for your JetPack.")
+    subprocess.run(["espeak-ng", "--version"],
+                   capture_output=True, check=True)
+    print(f"  {'espeak-ng':<20} OK")
+except Exception as e:
+    print(f"  {'espeak-ng':<20} MISSING — {e}")
+    ok = False
+
+sys.exit(0 if ok else 1)
 EOF
 
 echo ""
 echo "Setup complete."
 echo ""
-echo "Quick test:"
-echo "  cd jetson/"
-echo "  python3 test_asr.py --save-wav"
+echo "Activate the venv:"
+echo "  source ~/voice-assistant-env/bin/activate"
 echo ""
-echo "If the GPU runs out of memory, add --cpu to fall back to int8 CPU:"
-echo "  python3 test_asr.py --cpu"
+echo "Download the Piper TTS voice model (run once):"
+echo "  cd jetson/ && python3 -c \"from tts import PiperTTS; PiperTTS()\""
+echo ""
+echo "Test ASR:"
+echo "  cd jetson/ && python3 test_asr.py --save-wav"
+echo ""
+echo "Test TTS:"
+echo "  cd jetson/ && python3 test_tts.py"

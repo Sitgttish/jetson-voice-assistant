@@ -37,6 +37,17 @@ WHISPER_COMPUTE_TYPE = "int8"
 WHISPER_LANGUAGE     = "en"   # set None for auto-detect (slower)
 
 # ---------------------------------------------------------------------------
+# TTS — Piper
+# ---------------------------------------------------------------------------
+# Voice model name — must match a file in MODEL_DIR:
+#   <name>.onnx and <name>.onnx.json
+# Downloaded automatically on first use if not present.
+# Browse voices: https://rhasspy.github.io/piper-samples/
+PIPER_VOICE      = "en_US-lessac-medium"
+# TTS output sample rate — Piper voices are usually 22050 Hz
+TTS_SAMPLE_RATE  = 22050
+
+# ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
