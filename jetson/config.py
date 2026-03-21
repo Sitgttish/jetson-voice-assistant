@@ -42,10 +42,12 @@ WHISPER_LANGUAGE     = "en"   # set None for auto-detect (slower)
 # ---------------------------------------------------------------------------
 # TTS
 # ---------------------------------------------------------------------------
-# "espeak"       — espeak-ng subprocess (system package, always works)
-# "piper-binary" — Piper pre-compiled binary (neural quality, run download_piper.sh first)
-# "piper"        — piper-tts Python package (NOT usable on aarch64 — no wheel)
-TTS_BACKEND      = "espeak"   # change to "piper-binary" after running download_piper.sh
+# "espeak"        — espeak-ng subprocess (system package, always works)
+# "piper-docker"  — Piper in Docker (neural quality, works on JetPack 4.x)
+#                   requires: docker pull rhasspy/piper:latest
+# "piper-binary"  — Piper pre-compiled binary (requires glibc 2.29, NOT on JetPack 4.x)
+# "piper"         — piper-tts Python package (NOT usable on aarch64 — no wheel)
+TTS_BACKEND      = "espeak"   # change to "piper-docker" after: docker pull rhasspy/piper:latest
 
 # espeak-ng settings
 ESPEAK_VOICE     = "en-us"

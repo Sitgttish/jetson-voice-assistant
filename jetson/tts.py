@@ -56,7 +56,97 @@ class TTSBase(abc.ABC):
 
 
 # ---------------------------------------------------------------------------
-# Piper binary TTS backend (recommended on aarch64)
+# Piper via Docker (works on JetPack 4.x / Ubuntu 18.04 / glibc 2.27)
+# ---------------------------------------------------------------------------
+
+class PiperDockerTTS(TTSBase):
+    """
+    Neural TTS using Piper inside a Docker container.
+
+    Solves the glibc 2.29 incompatibility of the pre-compiled Piper binary
+    on JetPack 4.x (Ubuntu 18.04, glibc 2.27).  The rhasspy/piper image
+    runs on linux/arm64 and bundles everything needed.
+
+    One-time setup:
+        docker pull rhasspy/piper:latest
+
+    Usage in config.py:
+        TTS_BACKEND = "piper-docker"
+
+    Latency: ~1.5–2.5 s per sentence (synthesis + docker run overhead).
+    """
+
+    IMAGE = "rhasspy/piper:latest"
+
+    def __init__(self, voice: Optional[str] = None):
+        voice = voice or config.PIPER_VOICE
+        self._voice      = voice
+        self._model_path = os.path.join(config.MODEL_DIR, f"{voice}.onnx")
+
+        if not os.path.isfile(self._model_path):
+            raise FileNotFoundError(
+                f"Piper voice model not found at {self._model_path}. "
+                "Run: bash download_piper.sh"
+            )
+
+        # Read sample rate from JSON config
+        json_path = self._model_path + ".json"
+        try:
+            with open(json_path) as f:
+                self._sample_rate = json.load(f)["audio"]["sample_rate"]
+        except Exception:
+            self._sample_rate = config.TTS_SAMPLE_RATE
+
+        # Verify Docker is available
+        try:
+            subprocess.run(
+                ["docker", "info"],
+                capture_output=True, check=True,
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+            raise RuntimeError(
+                "Docker is not running or not installed. "
+                "Install Docker and run: docker pull rhasspy/piper:latest"
+            ) from exc
+
+        logger.info(
+            "PiperDockerTTS ready (voice=%s, sample_rate=%d).",
+            voice, self._sample_rate,
+        )
+
+    def synthesize(self, text: str) -> bytes:
+        if not text.strip():
+            return b""
+
+        result = subprocess.run(
+            [
+                "docker", "run", "--rm", "-i",
+                "-v", f"{config.MODEL_DIR}:/models",
+                self.IMAGE,
+                "--model", f"/models/{os.path.basename(self._model_path)}",
+                "--output_raw",
+                "--quiet",
+            ],
+            input=text.encode("utf-8"),
+            capture_output=True,
+            check=True,
+        )
+
+        wav_bytes = _pcm_to_wav(result.stdout, self._sample_rate)
+        logger.debug(
+            "PiperDockerTTS synthesized %d bytes for %d chars",
+            len(wav_bytes), len(text),
+        )
+        return wav_bytes
+
+    def warm_up(self) -> None:
+        logger.info("Warming up PiperDockerTTS (first run pulls image layers into cache) …")
+        self.synthesize("Hello.")
+        logger.info("PiperDockerTTS warm-up complete.")
+
+
+# ---------------------------------------------------------------------------
+# Piper binary TTS backend (requires glibc 2.29 — not usable on JetPack 4.x)
 # ---------------------------------------------------------------------------
 
 class PiperBinaryTTS(TTSBase):
@@ -335,6 +425,8 @@ def create_tts(backend: Optional[str] = None) -> TTSBase:
                     which has no aarch64 wheel yet — not usable on Jetson Nano)
     """
     backend = backend or config.TTS_BACKEND
+    if backend == "piper-docker":
+        return PiperDockerTTS()
     if backend == "piper-binary":
         return PiperBinaryTTS()
     if backend == "piper":
