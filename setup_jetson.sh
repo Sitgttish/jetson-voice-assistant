@@ -39,7 +39,8 @@ pip3 install --upgrade pip
 pip3 install pyaudio
 
 # numpy — audio array processing
-pip3 install "numpy>=1.21,<2.0"
+# JetPack 4.x (Python 3.6) tops out at 1.19.5; JetPack 5.x can go higher
+pip3 install "numpy>=1.19,<2.0"
 
 # ---------------------------------------------------------------------------
 # faster-whisper + CTranslate2
