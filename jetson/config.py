@@ -29,10 +29,11 @@ MAX_RECORD_SECONDS    = 15
 # ---------------------------------------------------------------------------
 # "tiny" ~39 MB VRAM; "base" ~74 MB; "small" ~244 MB
 WHISPER_MODEL_SIZE   = "tiny"
-# "cuda" to use Jetson GPU; "cpu" if you hit OOM issues
-WHISPER_DEVICE       = "cuda"
-# "float16" for GPU; "int8" is quantised and saves ~50% memory
-WHISPER_COMPUTE_TYPE = "float16"
+# "cpu" works out of the box; "cuda" requires a CUDA-enabled ctranslate2
+# build (not available on PyPI for aarch64 — needs compiling from source)
+WHISPER_DEVICE       = "cpu"
+# "int8" is fastest on CPU; use "float16" only if you have CUDA ctranslate2
+WHISPER_COMPUTE_TYPE = "int8"
 WHISPER_LANGUAGE     = "en"   # set None for auto-detect (slower)
 
 # ---------------------------------------------------------------------------
