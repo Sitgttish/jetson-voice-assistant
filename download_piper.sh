@@ -43,7 +43,7 @@ if [ -f "$PIPER_BIN" ]; then
 else
     echo "[1/2] Downloading Piper binary (${PIPER_VERSION}) …"
     TMP_TAR="$(mktemp /tmp/piper_XXXXXX.tar.gz)"
-    curl -L --progress-bar -o "$TMP_TAR" "$PIPER_URL"
+    wget -q --show-progress -O "$TMP_TAR" "$PIPER_URL"
     echo "  Extracting …"
     # The tarball extracts to a 'piper/' subdirectory
     tar -xf "$TMP_TAR" -C "$BIN_DIR" --strip-components=1
@@ -68,8 +68,8 @@ if [ -f "$MODEL_ONNX" ] && [ -f "$MODEL_JSON" ]; then
     echo "[2/2] Voice model already present — skipping download."
 else
     echo "[2/2] Downloading voice model '${VOICE}' (~63 MB) …"
-    curl -L --progress-bar -o "$MODEL_ONNX" "${HF_BASE}/${VOICE}.onnx"
-    curl -L --progress-bar -o "$MODEL_JSON" "${HF_BASE}/${VOICE}.onnx.json"
+    wget -q --show-progress -O "$MODEL_ONNX" "${HF_BASE}/${VOICE}.onnx"
+    wget -q --show-progress -O "$MODEL_JSON" "${HF_BASE}/${VOICE}.onnx.json"
     echo "  Model ready at $MODEL_ONNX"
 fi
 
