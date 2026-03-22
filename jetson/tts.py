@@ -180,7 +180,9 @@ class EspeakTTS(TTSBase):
     Use this if Piper is unavailable or you want near-zero latency.
     """
 
-    def __init__(self, voice: str = "en-us", speed: int = 150):
+    def __init__(self, voice: Optional[str] = None, speed: Optional[int] = None):
+        voice = voice or config.ESPEAK_VOICE
+        speed = speed or config.ESPEAK_SPEED
         self._voice = voice
         self._speed = speed
         # Verify espeak-ng is available
@@ -218,16 +220,18 @@ class EspeakTTS(TTSBase):
 # Factory
 # ---------------------------------------------------------------------------
 
-def create_tts(backend: str = "piper") -> TTSBase:
+def create_tts(backend: Optional[str] = None) -> TTSBase:
     """
     Return the configured TTS backend.
 
     Parameters
     ----------
     backend : str
-        "piper"   — PiperTTS (neural, recommended)
-        "espeak"  — EspeakTTS (robotic, instant fallback)
+        "espeak"  — EspeakTTS (default; system espeak-ng, works on aarch64)
+        "piper"   — PiperTTS (neural quality; requires piper-phonemize
+                    which has no aarch64 wheel yet — not usable on Jetson Nano)
     """
-    if backend == "espeak":
-        return EspeakTTS()
-    return PiperTTS()
+    backend = backend or config.TTS_BACKEND
+    if backend == "piper":
+        return PiperTTS()
+    return EspeakTTS()
