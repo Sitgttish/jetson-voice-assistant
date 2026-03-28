@@ -8,13 +8,16 @@ AudioPlayer in audio_io.py consumes those bytes via play_wav().
 
 Implemented backends
 --------------------
-PiperTTS    — piper-tts (neural, ONNX, good quality, ~60 MB model)
-EspeakTTS   — espeak-ng subprocess (robotic but zero-download fallback)
+PiperBinaryTTS — pre-compiled piper binary (neural, best quality, run download_piper.sh)
+PiperTTS       — piper-tts Python package (NOT usable on aarch64 — no wheel)
+EspeakTTS      — espeak-ng subprocess (robotic but zero-download fallback)
 """
 import abc
 import io
+import json
 import logging
 import os
+import struct
 import subprocess
 import wave
 from typing import Optional
@@ -53,7 +56,107 @@ class TTSBase(abc.ABC):
 
 
 # ---------------------------------------------------------------------------
-# Piper TTS backend
+# Piper binary TTS backend (recommended on aarch64)
+# ---------------------------------------------------------------------------
+
+class PiperBinaryTTS(TTSBase):
+    """
+    Neural TTS using the pre-compiled piper binary (aarch64).
+
+    The binary bundles its own ONNX runtime and phonemizer, so no Python
+    packages are needed.  Run download_piper.sh once to fetch the binary
+    and voice model.
+
+    Usage in config.py:
+        TTS_BACKEND  = "piper-binary"
+        PIPER_BINARY = "/absolute/path/to/piper-bin/piper"
+        PIPER_VOICE  = "en_US-lessac-medium"
+
+    Latency: ~0.5–1 s on Jetson Nano CPU for a short sentence.
+    """
+
+    def __init__(
+        self,
+        binary_path: Optional[str] = None,
+        voice: Optional[str] = None,
+    ):
+        self._binary = binary_path or config.PIPER_BINARY
+        voice        = voice       or config.PIPER_VOICE
+
+        if not os.path.isfile(self._binary):
+            raise FileNotFoundError(
+                f"Piper binary not found at {self._binary}. "
+                "Run: bash download_piper.sh"
+            )
+
+        model_path  = os.path.join(config.MODEL_DIR, f"{voice}.onnx")
+        config_path = os.path.join(config.MODEL_DIR, f"{voice}.onnx.json")
+
+        if not os.path.isfile(model_path):
+            raise FileNotFoundError(
+                f"Piper voice model not found at {model_path}. "
+                "Run: bash download_piper.sh"
+            )
+
+        self._model_path = model_path
+
+        # Read sample rate from the voice config JSON
+        try:
+            with open(config_path) as f:
+                info = json.load(f)
+            self._sample_rate = info["audio"]["sample_rate"]
+        except Exception:
+            self._sample_rate = config.TTS_SAMPLE_RATE
+
+        logger.info(
+            "PiperBinaryTTS ready (voice=%s, sample_rate=%d).",
+            voice, self._sample_rate,
+        )
+
+    def synthesize(self, text: str) -> bytes:
+        if not text.strip():
+            return b""
+
+        result = subprocess.run(
+            [
+                self._binary,
+                "--model",      self._model_path,
+                "--output_raw",
+                "--quiet",
+            ],
+            input=text.encode("utf-8"),
+            capture_output=True,
+            check=True,
+        )
+
+        raw_pcm = result.stdout
+        wav_bytes = _pcm_to_wav(raw_pcm, self._sample_rate)
+        logger.debug(
+            "PiperBinaryTTS synthesized %d bytes for %d chars",
+            len(wav_bytes), len(text),
+        )
+        return wav_bytes
+
+    def warm_up(self) -> None:
+        logger.info("Warming up Piper binary TTS …")
+        self.synthesize("Hello.")
+        logger.info("Piper binary TTS warm-up complete.")
+
+
+def _pcm_to_wav(pcm_bytes: bytes, sample_rate: int,
+                channels: int = 1, sampwidth: int = 2) -> bytes:
+    """Wrap raw int16 PCM bytes in a WAV container."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(sampwidth)
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm_bytes)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Piper TTS backend (Python package — NOT usable on aarch64)
 # ---------------------------------------------------------------------------
 
 class PiperTTS(TTSBase):
@@ -232,6 +335,8 @@ def create_tts(backend: Optional[str] = None) -> TTSBase:
                     which has no aarch64 wheel yet — not usable on Jetson Nano)
     """
     backend = backend or config.TTS_BACKEND
+    if backend == "piper-binary":
+        return PiperBinaryTTS()
     if backend == "piper":
         return PiperTTS()
     return EspeakTTS()

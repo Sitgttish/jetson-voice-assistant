@@ -39,16 +39,21 @@ WHISPER_LANGUAGE     = "en"   # set None for auto-detect (slower)
 # ---------------------------------------------------------------------------
 # TTS
 # ---------------------------------------------------------------------------
-# "espeak" — espeak-ng subprocess (system package, works on all ARM64)
-# "piper"  — piper-tts neural TTS (piper-phonemize has no aarch64 wheel,
-#             so this will NOT work on Jetson Nano until a wheel is published)
-TTS_BACKEND      = "espeak"
+# "espeak"       — espeak-ng subprocess (system package, always works)
+# "piper-binary" — Piper pre-compiled binary (neural quality, run download_piper.sh first)
+# "piper"        — piper-tts Python package (NOT usable on aarch64 — no wheel)
+TTS_BACKEND      = "espeak"   # change to "piper-binary" after running download_piper.sh
 
 # espeak-ng settings
 ESPEAK_VOICE     = "en-us"
 ESPEAK_SPEED     = 150        # words per minute (default 175)
 
-# TTS output sample rate
+# Piper binary settings (only used when TTS_BACKEND = "piper-binary")
+# Set PIPER_BINARY to the absolute path printed by download_piper.sh
+PIPER_BINARY     = os.path.join(os.path.dirname(BASE_DIR), "piper-bin", "piper")
+PIPER_VOICE      = "en_US-lessac-medium"
+
+# TTS output sample rate (Piper medium voices = 22050 Hz; espeak = 22050 Hz)
 TTS_SAMPLE_RATE  = 22050
 
 # ---------------------------------------------------------------------------
