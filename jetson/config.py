@@ -5,34 +5,37 @@ Edit this file to tune hardware settings and model choices.
 import os
 
 # ---------------------------------------------------------------------------
+# Paths (defined first so other sections can reference them)
+# ---------------------------------------------------------------------------
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR     = os.path.join(BASE_DIR, "logs")
+MODEL_DIR   = os.path.join(BASE_DIR, "models")
+
+os.makedirs(LOG_DIR,   exist_ok=True)
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+# ---------------------------------------------------------------------------
 # Audio hardware
 # ---------------------------------------------------------------------------
 ALSA_DEVICE = "plughw:2,0"   # HyperX USB headset on Jetson Nano
 SAMPLE_RATE  = 16000          # Hz — Whisper expects 16 kHz
 CHANNELS     = 1              # mono
-DTYPE        = "int16"        # PCM format for ALSA / pyaudio
+DTYPE        = "int16"        # PCM format for ALSA
 
 # ---------------------------------------------------------------------------
 # Voice-activity detection (energy-based, no extra deps)
 # ---------------------------------------------------------------------------
-# Recording stops after this many consecutive silent chunks
-VAD_SILENCE_CHUNKS   = 20     # ~0.64 s at chunk=512, sr=16000
-# RMS below this threshold is considered silence
-VAD_SILENCE_THRESHOLD = 500   # tune up if mic is noisy, down if too sensitive
-# Minimum speech chunks before VAD will trigger end-of-utterance
-VAD_MIN_SPEECH_CHUNKS = 5
-# Hard ceiling on recording length (seconds)
-MAX_RECORD_SECONDS    = 15
+VAD_SILENCE_CHUNKS    = 20    # consecutive silent chunks before end-of-utterance
+VAD_SILENCE_THRESHOLD = 500   # RMS below this = silence (raise if room is noisy)
+VAD_MIN_SPEECH_CHUNKS = 5     # minimum speech chunks before VAD can stop
+MAX_RECORD_SECONDS    = 15    # hard ceiling on recording length
 
 # ---------------------------------------------------------------------------
 # ASR — faster-whisper
 # ---------------------------------------------------------------------------
-# "tiny" ~39 MB VRAM; "base" ~74 MB; "small" ~244 MB
 WHISPER_MODEL_SIZE   = "tiny"
-# "cpu" works out of the box; "cuda" requires a CUDA-enabled ctranslate2
-# build (not available on PyPI for aarch64 — needs compiling from source)
+# "cpu" works out of the box; "cuda" requires CUDA-enabled ctranslate2 (not on PyPI aarch64)
 WHISPER_DEVICE       = "cpu"
-# "int8" is fastest on CPU; use "float16" only if you have CUDA ctranslate2
 WHISPER_COMPUTE_TYPE = "int8"
 WHISPER_LANGUAGE     = "en"   # set None for auto-detect (slower)
 
@@ -46,25 +49,14 @@ TTS_BACKEND      = "espeak"   # change to "piper-binary" after running download_
 
 # espeak-ng settings
 ESPEAK_VOICE     = "en-us"
-ESPEAK_SPEED     = 150        # words per minute (default 175)
+ESPEAK_SPEED     = 150        # words per minute
 
 # Piper binary settings (only used when TTS_BACKEND = "piper-binary")
-# Set PIPER_BINARY to the absolute path printed by download_piper.sh
 PIPER_BINARY     = os.path.join(os.path.dirname(BASE_DIR), "piper-bin", "piper")
 PIPER_VOICE      = "en_US-lessac-medium"
 
-# TTS output sample rate (Piper medium voices = 22050 Hz; espeak = 22050 Hz)
+# TTS output sample rate (Piper medium = 22050 Hz)
 TTS_SAMPLE_RATE  = 22050
-
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-LOG_DIR     = os.path.join(BASE_DIR, "logs")
-MODEL_DIR   = os.path.join(BASE_DIR, "models")  # faster-whisper caches here
-
-os.makedirs(LOG_DIR,   exist_ok=True)
-os.makedirs(MODEL_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Logging
