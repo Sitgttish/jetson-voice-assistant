@@ -76,7 +76,7 @@ class PiperDockerTTS(TTSBase):
     Latency: ~1.5–2.5 s per sentence (synthesis + docker run overhead).
     """
 
-    IMAGE = "rhasspy/piper:latest"
+    IMAGE = "piper-local:latest"
 
     def __init__(self, voice: Optional[str] = None):
         voice = voice or config.PIPER_VOICE
