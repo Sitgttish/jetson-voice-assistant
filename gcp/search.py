@@ -18,9 +18,8 @@ def needs_search(text: str) -> bool:
 
 def web_search(query: str, max_results: int = 3) -> Optional[str]:
     try:
-        from duckduckgo_search import DDGS
-        with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=max_results))
+        from ddgs import DDGS
+        results = list(DDGS().text(query, max_results=max_results))
         if not results:
             return None
         snippets = [f"{r['title']}: {r['body']}" for r in results]
