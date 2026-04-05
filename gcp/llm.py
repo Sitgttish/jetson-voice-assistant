@@ -12,13 +12,14 @@ class LLMBase(ABC):
 
 
 class HuggingFaceLLM(LLMBase):
+    """4-bit quantized inference via bitsandbytes. Use on Linux/CUDA (GCP VM)."""
+
     def __init__(self, model_id: str, load_in_4bit: bool = True,
                  max_new_tokens: int = 512, temperature: float = 0.7):
         import torch
         from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
-        logger.info(f"Loading model {model_id} (4bit={load_in_4bit})...")
-
+        logger.info(f"Loading HuggingFace model {model_id} (4bit={load_in_4bit})...")
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
 
         if load_in_4bit:
@@ -29,15 +30,11 @@ class HuggingFaceLLM(LLMBase):
                 bnb_4bit_quant_type="nf4",
             )
             self.model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                quantization_config=quant_config,
-                device_map="auto",
+                model_id, quantization_config=quant_config, device_map="auto",
             )
         else:
             self.model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                torch_dtype=torch.float16,
-                device_map="auto",
+                model_id, torch_dtype=torch.float16, device_map="auto",
             )
 
         self.max_new_tokens = max_new_tokens
@@ -53,9 +50,7 @@ class HuggingFaceLLM(LLMBase):
         messages.append({"role": "user", "content": user_message})
 
         input_ids = self.tokenizer.apply_chat_template(
-            messages,
-            add_generation_prompt=True,
-            return_tensors="pt",
+            messages, add_generation_prompt=True, return_tensors="pt",
         ).to(self.model.device)
 
         with torch.no_grad():
@@ -67,16 +62,57 @@ class HuggingFaceLLM(LLMBase):
                 pad_token_id=self.tokenizer.eos_token_id,
             )
 
-        # Decode only the newly generated tokens
         new_tokens = output_ids[0][input_ids.shape[-1]:]
         return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
 
+class MLXLLM(LLMBase):
+    """Apple MLX inference. Use on Apple Silicon Macs for local development."""
+
+    def __init__(self, model_id: str, max_new_tokens: int = 512, temperature: float = 0.7):
+        from mlx_lm import load
+        logger.info(f"Loading MLX model {model_id}...")
+        self.model, self.tokenizer = load(model_id)
+        self.max_new_tokens = max_new_tokens
+        self.temperature = temperature
+        logger.info("MLX model loaded.")
+
+    def generate(self, user_message: str, system_prompt: Optional[str] = None) -> str:
+        from mlx_lm import generate
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_message})
+
+        prompt = self.tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=False,
+        )
+        return generate(
+            self.model,
+            self.tokenizer,
+            prompt=prompt,
+            max_tokens=self.max_new_tokens,
+            temp=self.temperature,
+            verbose=False,
+        )
+
+
 def create_llm() -> LLMBase:
     import config
-    return HuggingFaceLLM(
-        model_id=config.MODEL_ID,
-        load_in_4bit=config.LOAD_IN_4BIT,
-        max_new_tokens=config.MAX_NEW_TOKENS,
-        temperature=config.TEMPERATURE,
-    )
+
+    if config.LLM_BACKEND == "mlx":
+        return MLXLLM(
+            model_id=config.MLX_MODEL_ID,
+            max_new_tokens=config.MAX_NEW_TOKENS,
+            temperature=config.TEMPERATURE,
+        )
+    elif config.LLM_BACKEND == "huggingface":
+        return HuggingFaceLLM(
+            model_id=config.MODEL_ID,
+            load_in_4bit=config.LOAD_IN_4BIT,
+            max_new_tokens=config.MAX_NEW_TOKENS,
+            temperature=config.TEMPERATURE,
+        )
+    else:
+        raise ValueError(f"Unknown LLM_BACKEND: {config.LLM_BACKEND!r}. Use 'mlx' or 'huggingface'.")
