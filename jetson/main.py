@@ -37,7 +37,7 @@ def run():
         try:
             # 1. Record until silence
             logger.info("Waiting for speech...")
-            pcm = recorder.record_until_silence()
+            pcm = recorder.record()
             if not pcm:
                 continue
 
