@@ -69,7 +69,8 @@ logger = logging.getLogger("test_asr")
 def main() -> None:
     print("=" * 60)
     print("  Jetson Voice Assistant — ASR test")
-    print(f"  ALSA device : {config.ALSA_DEVICE}")
+    print(f"  ALSA mic    : {config.ALSA_MIC_DEVICE}")
+    print(f"  ALSA speaker: {config.ALSA_SPEAKER_DEVICE}")
     print(f"  Whisper     : {config.WHISPER_MODEL_SIZE} / "
           f"{config.WHISPER_DEVICE} / {config.WHISPER_COMPUTE_TYPE}")
     print("=" * 60)
