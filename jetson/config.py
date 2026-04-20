@@ -61,6 +61,13 @@ PIPER_VOICE      = "en_US-lessac-medium"
 TTS_SAMPLE_RATE  = 22050
 
 # ---------------------------------------------------------------------------
+# LLM backend
+# ---------------------------------------------------------------------------
+# URL of the GCP server. Replace with your VM's external IP after provisioning.
+GCP_SERVER_URL      = os.environ.get("GCP_SERVER_URL", "http://YOUR_GCP_IP:8000")
+LLM_REQUEST_TIMEOUT = 30   # seconds to wait for a response
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 LOG_LEVEL = "INFO"
