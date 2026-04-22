@@ -1,8 +1,11 @@
+# Core server
 fastapi>=0.111.0
 uvicorn>=0.29.0
 pydantic>=2.0.0
-torch>=2.1.0
-transformers>=4.43.0
-accelerate>=0.30.0
-bitsandbytes>=0.43.0
 duckduckgo-search>=6.1.0
+
+# Apple Silicon (local dev) — LLM_BACKEND=mlx
+mlx-lm>=0.18.0
+
+# Linux/CUDA (GCP VM) — LLM_BACKEND=huggingface
+# Install manually on GCP: pip install torch transformers accelerate bitsandbytes
