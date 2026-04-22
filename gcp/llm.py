@@ -79,6 +79,7 @@ class MLXLLM(LLMBase):
 
     def generate(self, user_message: str, system_prompt: Optional[str] = None) -> str:
         from mlx_lm import generate
+        from mlx_lm.sample_utils import make_sampler
 
         messages = []
         if system_prompt:
@@ -93,7 +94,7 @@ class MLXLLM(LLMBase):
             self.tokenizer,
             prompt=prompt,
             max_tokens=self.max_new_tokens,
-            temp=self.temperature,
+            sampler=make_sampler(temp=self.temperature),
             verbose=False,
         )
 
