@@ -20,10 +20,11 @@ from llm_client import create_llm_client
 
 
 def log_latency(record_ms, asr_ms, network_ms, server_latency, tts_ms, playback_ms):
-    total_ms = record_ms + asr_ms + network_ms + tts_ms + playback_ms
+    # Response latency = time from user stops talking to audio starts playing
+    response_latency_ms = asr_ms + network_ms + tts_ms
     lines = [
         "--- Latency Breakdown ---",
-        f"  Recording      : {record_ms:>7.0f} ms",
+        f"  Recording      : {record_ms:>7.0f} ms  (user speaking, not part of response latency)",
         f"  ASR            : {asr_ms:>7.0f} ms",
         f"  Network RT     : {network_ms:>7.0f} ms",
     ]
@@ -33,8 +34,8 @@ def log_latency(record_ms, asr_ms, network_ms, server_latency, tts_ms, playback_
         lines.append(f"    └─ LLM        : {server_latency['llm_ms']:>7.0f} ms")
     lines += [
         f"  TTS            : {tts_ms:>7.0f} ms",
-        f"  Playback       : {playback_ms:>7.0f} ms",
-        f"  Total          : {total_ms:>7.0f} ms",
+        f"  Playback       : {playback_ms:>7.0f} ms  (response length, not part of response latency)",
+        f"  *** Response Latency : {response_latency_ms:>7.0f} ms ***",
         "-------------------------",
     ]
     logger.info("\n".join(lines))
@@ -65,10 +66,12 @@ def run():
             if not pcm:
                 continue
 
+            # Mark the moment user finishes talking — response latency starts here
+            t_user_done = time.perf_counter()
+
             # 2. ASR
-            t0 = time.perf_counter()
             transcript = asr.transcribe(pcm)
-            asr_ms = (time.perf_counter() - t0) * 1000
+            asr_ms = (time.perf_counter() - t_user_done) * 1000
             if not transcript:
                 logger.info("No speech detected, skipping.")
                 continue
@@ -88,7 +91,7 @@ def run():
             wav = tts.synthesize(response)
             tts_ms = (time.perf_counter() - t0) * 1000
 
-            # 5. Playback
+            # Audio starts playing here — response latency ends
             t0 = time.perf_counter()
             if wav:
                 player.play_wav(wav)
