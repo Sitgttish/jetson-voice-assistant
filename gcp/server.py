@@ -1,13 +1,14 @@
 import logging
 import sys
 import os
+import time
 
 # Allow imports from gcp/ directory
 sys.path.insert(0, os.path.dirname(__file__))
 
 import config
 from llm import create_llm
-from search import build_prompt_with_search
+from search import build_prompt_with_search, needs_search
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -26,6 +27,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    latency_ms: dict  # {"search_ms": float|None, "llm_ms": float, "total_ms": float}
 
 
 @app.on_event("startup")
@@ -39,10 +41,38 @@ async def chat(req: ChatRequest):
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="Empty message")
 
-    prompt = build_prompt_with_search(req.message, max_results=config.SEARCH_MAX_RESULTS)
+    t_total = time.perf_counter()
+
+    # Search (optional)
+    search_ms = None
+    if needs_search(req.message):
+        t_search = time.perf_counter()
+        prompt = build_prompt_with_search(req.message, max_results=config.SEARCH_MAX_RESULTS)
+        search_ms = (time.perf_counter() - t_search) * 1000
+    else:
+        prompt = req.message
+
+    # LLM generation
+    t_llm = time.perf_counter()
     response = llm.generate(prompt, system_prompt=config.SYSTEM_PROMPT)
+    llm_ms = (time.perf_counter() - t_llm) * 1000
+
+    total_ms = (time.perf_counter() - t_total) * 1000
+
+    logger.info(
+        f"Latency — search: {f'{search_ms:.0f}ms' if search_ms else 'N/A'}, "
+        f"llm: {llm_ms:.0f}ms, total: {total_ms:.0f}ms"
+    )
     logger.info(f"User: {req.message!r} -> Response: {response[:80]!r}...")
-    return ChatResponse(response=response)
+
+    return ChatResponse(
+        response=response,
+        latency_ms={
+            "search_ms": round(search_ms, 1) if search_ms is not None else None,
+            "llm_ms": round(llm_ms, 1),
+            "total_ms": round(total_ms, 1),
+        },
+    )
 
 
 @app.get("/health")

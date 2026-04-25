@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Tuple
 import logging
 import requests
 
@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 
 class LLMClientBase(ABC):
     @abstractmethod
-    def chat(self, message: str) -> Optional[str]:
-        """Send a message, return the text response or None on failure."""
+    def chat(self, message: str) -> Tuple[Optional[str], Optional[dict]]:
+        """Send a message, return (response_text, latency_ms_dict) or (None, None) on failure."""
         pass
 
     @abstractmethod
@@ -30,7 +30,7 @@ class CloudLLMClient(LLMClientBase):
         except Exception:
             return False
 
-    def chat(self, message: str) -> Optional[str]:
+    def chat(self, message: str) -> Tuple[Optional[str], Optional[dict]]:
         try:
             r = requests.post(
                 f"{self.base_url}/chat",
@@ -38,10 +38,11 @@ class CloudLLMClient(LLMClientBase):
                 timeout=self.timeout,
             )
             r.raise_for_status()
-            return r.json()["response"]
+            data = r.json()
+            return data["response"], data.get("latency_ms")
         except Exception as e:
             logger.error(f"CloudLLMClient error: {e}")
-            return None
+            return None, None
 
 
 # Placeholder — will be implemented when local LLM is deployed on Jetson
@@ -49,7 +50,7 @@ class LocalLLMClient(LLMClientBase):
     def is_available(self) -> bool:
         return False
 
-    def chat(self, message: str) -> Optional[str]:
+    def chat(self, message: str) -> Tuple[Optional[str], Optional[dict]]:
         raise NotImplementedError("Local LLM not yet deployed")
 
 
