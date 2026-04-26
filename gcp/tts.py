@@ -36,6 +36,9 @@ def synthesize(text: str) -> Optional[bytes]:
         voice = PiperVoice.load(voice_path)
         buf = io.BytesIO()
         with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(voice.config.sample_rate)
             voice.synthesize(text, wf)
         return buf.getvalue()
 
