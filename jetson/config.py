@@ -17,8 +17,29 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 # ---------------------------------------------------------------------------
 # Audio hardware
 # ---------------------------------------------------------------------------
-ALSA_MIC_DEVICE      = "plughw:3,0"   # USB microphone
-ALSA_SPEAKER_DEVICE  = "plughw:2,0"   # USB speaker
+# USB device names to match — stable across reboots unlike card numbers.
+# Run `arecord -l` and `aplay -l` to see available devices.
+_USB_MIC_NAME      = "USB PnP Sound Device"
+_USB_SPEAKER_NAME  = "USB Device 0x1908:0x1331"
+
+def _find_alsa_device(device_name: str, mode: str) -> str:
+    """Look up plughw:X,0 for a device by its name in arecord/aplay -l output."""
+    import subprocess, re
+    cmd = "arecord" if mode == "capture" else "aplay"
+    try:
+        out = subprocess.check_output([cmd, "-l"], stderr=subprocess.DEVNULL).decode()
+        for line in out.splitlines():
+            if device_name in line:
+                m = re.search(r"card (\d+):", line)
+                if m:
+                    return f"plughw:{m.group(1)},0"
+    except Exception:
+        pass
+    return None
+
+ALSA_MIC_DEVICE     = _find_alsa_device(_USB_MIC_NAME,     "capture")  or "plughw:2,0"
+ALSA_SPEAKER_DEVICE = _find_alsa_device(_USB_SPEAKER_NAME, "playback") or "plughw:2,0"
+
 SAMPLE_RATE  = 16000          # Hz — Whisper expects 16 kHz
 CHANNELS     = 1              # mono
 DTYPE        = "int16"        # PCM format for ALSA
