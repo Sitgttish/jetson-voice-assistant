@@ -10,6 +10,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 import config
 from llm import create_llm
 from search import build_prompt_with_search, needs_search
+from schedule import needs_schedule, get_schedule_context
+from user_memory import get_user_context
 import tts as tts_module
 
 from fastapi import FastAPI, HTTPException
@@ -47,7 +49,16 @@ async def chat(req: ChatRequest):
 
     t_total = time.perf_counter()
 
-    # Search (optional)
+    # Build system prompt with user memory always included
+    system_prompt = config.SYSTEM_PROMPT_BASE + "\n\n" + get_user_context()
+
+    # Schedule context (optional)
+    if needs_schedule(req.message):
+        schedule_ctx = get_schedule_context(req.message)
+        if schedule_ctx:
+            system_prompt += "\n\n" + schedule_ctx
+
+    # Web search (optional)
     search_ms = None
     if needs_search(req.message):
         t_search = time.perf_counter()
@@ -58,7 +69,7 @@ async def chat(req: ChatRequest):
 
     # LLM generation
     t_llm = time.perf_counter()
-    response = llm.generate(prompt, system_prompt=config.SYSTEM_PROMPT)
+    response = llm.generate(prompt, system_prompt=system_prompt)
     llm_ms = (time.perf_counter() - t_llm) * 1000
 
     # TTS synthesis

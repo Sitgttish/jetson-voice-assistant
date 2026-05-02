@@ -29,15 +29,17 @@ MODEL_ID     = _MODELS[_MODEL_CHOICE]["hf"]
 MLX_MODEL_ID = _MODELS[_MODEL_CHOICE]["mlx"]
 
 LOAD_IN_4BIT   = True
-MAX_NEW_TOKENS = 512
+MAX_NEW_TOKENS = 120   # ~2-3 spoken sentences; keeps LLM + TTS + playback fast
 TEMPERATURE    = 0.7
 
 # Web search
 SEARCH_MAX_RESULTS = 3
 
-# System prompt
-SYSTEM_PROMPT = (
-    "You are a helpful voice assistant. "
-    "Give concise, natural responses suitable for spoken audio — avoid markdown, bullet points, or lists. "
+# Base system prompt — user memory and schedule context are appended at request time
+SYSTEM_PROMPT_BASE = (
+    "You are a helpful personal voice assistant. "
+    "Reply in 2-3 sentences maximum — short enough to speak aloud in under 10 seconds. "
+    "Never use markdown, bullet points, numbers, or lists. Speak naturally and directly. "
+    "Use any provided user facts or schedule context to give personalized answers. "
     "If you use a web search result, incorporate it naturally into your answer."
 )
