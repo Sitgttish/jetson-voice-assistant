@@ -37,6 +37,7 @@ class ChatResponse(BaseModel):
 async def startup():
     global llm
     llm = create_llm()
+    tts_module._load_voice()  # pre-load so first request isn't slow
 
 
 @app.post("/chat", response_model=ChatResponse)

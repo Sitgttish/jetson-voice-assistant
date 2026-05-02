@@ -9,72 +9,66 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 PIPER_VOICE = "en_US-lessac-medium"
+_CACHE_DIR  = os.path.expanduser("~/.cache/piper-voices")
+_VOICE_PATH = os.path.join(_CACHE_DIR, "en", "en_US", "lessac", "medium", f"{PIPER_VOICE}.onnx")
+
+_voice = None  # cached PiperVoice instance
 
 
-def _pcm_to_wav(pcm_bytes: bytes, sample_rate: int = 22050) -> bytes:
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes(pcm_bytes)
-    return buf.getvalue()
-
-
-def synthesize(text: str) -> Optional[bytes]:
-    """Synthesize text to WAV bytes using piper-tts (native on x86_64)."""
-    if not text.strip():
-        return None
+def _load_voice():
+    global _voice
+    if _voice is not None:
+        return _voice
     try:
         from piper import PiperVoice
-        import numpy as np
-
         voice_path = _ensure_voice()
-        if voice_path is None:
-            return _espeak_fallback(text)
-
-        voice = PiperVoice.load(voice_path)
-        buf = io.BytesIO()
-        with wave.open(buf, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(voice.config.sample_rate)
-            voice.synthesize(text, wf)
-        return buf.getvalue()
-
-    except ImportError:
-        logger.warning("piper-tts not installed, falling back to espeak.")
-        return _espeak_fallback(text)
+        if voice_path:
+            _voice = PiperVoice.load(voice_path)
+            logger.info(f"Piper TTS loaded: {voice_path}")
     except Exception as e:
-        logger.error(f"TTS error: {e}")
-        return _espeak_fallback(text)
+        logger.warning(f"Could not load Piper voice: {e}")
+    return _voice
 
 
 def _ensure_voice() -> Optional[str]:
-    """Download the Piper voice model if not already cached."""
-    cache_dir = os.path.expanduser("~/.cache/piper-voices")
-    onnx_path = os.path.join(cache_dir, f"{PIPER_VOICE}.onnx")
-    if os.path.exists(onnx_path):
-        return onnx_path
+    if os.path.exists(_VOICE_PATH):
+        return _VOICE_PATH
     try:
         from huggingface_hub import hf_hub_download
-        os.makedirs(cache_dir, exist_ok=True)
-        repo = "rhasspy/piper-voices"
-        lang, name, quality = PIPER_VOICE.split("-", 2) if "-" in PIPER_VOICE else (None, None, None)
-        prefix = f"en/en_US/lessac/medium"
-        hf_hub_download(repo_id=repo, filename=f"{prefix}/{PIPER_VOICE}.onnx",
-                        local_dir=cache_dir, local_dir_use_symlinks=False)
-        hf_hub_download(repo_id=repo, filename=f"{prefix}/{PIPER_VOICE}.onnx.json",
-                        local_dir=cache_dir, local_dir_use_symlinks=False)
-        downloaded = os.path.join(cache_dir, prefix, f"{PIPER_VOICE}.onnx")
-        return downloaded if os.path.exists(downloaded) else None
+        os.makedirs(_CACHE_DIR, exist_ok=True)
+        prefix = "en/en_US/lessac/medium"
+        for ext in [".onnx", ".onnx.json"]:
+            hf_hub_download(
+                repo_id="rhasspy/piper-voices",
+                filename=f"{prefix}/{PIPER_VOICE}{ext}",
+                local_dir=_CACHE_DIR,
+            )
+        return _VOICE_PATH if os.path.exists(_VOICE_PATH) else None
     except Exception as e:
         logger.warning(f"Could not download Piper voice: {e}")
         return None
 
 
+def synthesize(text: str) -> Optional[bytes]:
+    if not text.strip():
+        return None
+    voice = _load_voice()
+    if voice:
+        try:
+            buf = io.BytesIO()
+            with wave.open(buf, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(voice.config.sample_rate)
+                voice.synthesize(text, wf)
+            return buf.getvalue()
+        except Exception as e:
+            logger.error(f"Piper TTS error: {e}")
+
+    return _espeak_fallback(text)
+
+
 def _espeak_fallback(text: str) -> Optional[bytes]:
-    """Fallback TTS using espeak-ng."""
     try:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             tmp = f.name
