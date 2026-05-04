@@ -87,7 +87,7 @@ def main() -> None:
 
     print("=" * 60)
     print("  Jetson Voice Assistant — TTS test")
-    print(f"  ALSA device : {config.ALSA_DEVICE}")
+    print(f"  ALSA speaker: {config.ALSA_SPEAKER_DEVICE}")
     print(f"  TTS backend : {backend}")
     print("=" * 60)
 
