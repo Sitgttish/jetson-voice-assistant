@@ -32,7 +32,7 @@ def _arecord_cmd(duration_s: Optional[float] = None) -> List[str]:
     """Build the arecord command for the configured device."""
     cmd = [
         "arecord",
-        "-D", config.ALSA_DEVICE,
+        "-D", config.ALSA_MIC_DEVICE,
         "-f", "S16_LE",
         "-r", str(config.SAMPLE_RATE),
         "-c", str(config.CHANNELS),
@@ -48,7 +48,7 @@ def _aplay_cmd() -> List[str]:
     """Build the aplay command for the configured device."""
     return [
         "aplay",
-        "-D", config.ALSA_DEVICE,
+        "-D", config.ALSA_SPEAKER_DEVICE,
         "-f", "S16_LE",
         "-r", str(config.SAMPLE_RATE),
         "-c", str(config.CHANNELS),
@@ -184,7 +184,7 @@ class AudioPlayer:
 
         cmd = [
             "aplay",
-            "-D", config.ALSA_DEVICE,
+            "-D", config.ALSA_SPEAKER_DEVICE,
             "-f", f"S{sw * 8}_LE",
             "-r", str(sr),
             "-c", str(ch),

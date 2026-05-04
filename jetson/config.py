@@ -17,7 +17,8 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 # ---------------------------------------------------------------------------
 # Audio hardware
 # ---------------------------------------------------------------------------
-ALSA_DEVICE = "plughw:2,0"   # HyperX USB headset on Jetson Nano
+ALSA_MIC_DEVICE      = "plughw:3,0"   # USB microphone
+ALSA_SPEAKER_DEVICE  = "plughw:2,0"   # USB speaker
 SAMPLE_RATE  = 16000          # Hz — Whisper expects 16 kHz
 CHANNELS     = 1              # mono
 DTYPE        = "int16"        # PCM format for ALSA
