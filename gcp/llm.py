@@ -49,9 +49,11 @@ class HuggingFaceLLM(LLMBase):
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_message})
 
-        input_ids = self.tokenizer.apply_chat_template(
+        encoded = self.tokenizer.apply_chat_template(
             messages, add_generation_prompt=True, return_tensors="pt",
-        ).to(self.model.device)
+        )
+        input_ids = (encoded["input_ids"] if hasattr(encoded, "__getitem__") and not torch.is_tensor(encoded)
+                     else encoded).to(self.model.device)
 
         with torch.no_grad():
             output_ids = self.model.generate(
