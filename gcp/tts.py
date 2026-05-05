@@ -55,12 +55,20 @@ def synthesize(text: str) -> Optional[bytes]:
     voice = _load_voice()
     if voice:
         try:
+            import numpy as np
+            pcm_chunks = []
+            for chunk in voice.synthesize(text):
+                pcm = (chunk.audio_float_array * 32767).astype(np.int16).tobytes()
+                pcm_chunks.append(pcm)
+            if not pcm_chunks:
+                raise ValueError("No audio chunks generated")
+            pcm = b"".join(pcm_chunks)
             buf = io.BytesIO()
             with wave.open(buf, "wb") as wf:
                 wf.setnchannels(1)
                 wf.setsampwidth(2)
                 wf.setframerate(voice.config.sample_rate)
-                voice.synthesize(text, wf)
+                wf.writeframes(pcm)
             return buf.getvalue()
         except Exception as e:
             logger.error(f"Piper TTS error: {e}")
