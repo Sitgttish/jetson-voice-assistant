@@ -12,6 +12,7 @@ from llm import create_llm
 from search import build_prompt_with_search, needs_search
 from schedule import needs_schedule, get_schedule_context
 from user_memory import get_user_context
+from tools import extract_and_execute, TOOL_INSTRUCTIONS
 import tts as tts_module
 
 from fastapi import FastAPI, HTTPException
@@ -49,8 +50,8 @@ async def chat(req: ChatRequest):
 
     t_total = time.perf_counter()
 
-    # Build system prompt with user memory always included
-    system_prompt = config.SYSTEM_PROMPT_BASE + "\n\n" + get_user_context()
+    # Build system prompt with user memory and tool instructions always included
+    system_prompt = config.SYSTEM_PROMPT_BASE + "\n\n" + get_user_context() + "\n\n" + TOOL_INSTRUCTIONS
 
     # Schedule context (optional)
     if needs_schedule(req.message):
@@ -71,6 +72,11 @@ async def chat(req: ChatRequest):
     t_llm = time.perf_counter()
     response = llm.generate(prompt, system_prompt=system_prompt)
     llm_ms = (time.perf_counter() - t_llm) * 1000
+
+    # Parse and execute any tool actions embedded in the response
+    response, action_executed = extract_and_execute(response)
+    if action_executed:
+        logger.info("Tool action executed successfully.")
 
     # TTS synthesis
     t_tts = time.perf_counter()
