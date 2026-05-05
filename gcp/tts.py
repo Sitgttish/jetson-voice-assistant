@@ -34,11 +34,10 @@ def synthesize(text: str) -> Optional[bytes]:
             return _espeak_fallback(text)
 
         voice = PiperVoice.load(voice_path)
-        pcm_chunks = []
-        for audio_bytes in voice.synthesize_stream_raw(text):
-            pcm_chunks.append(audio_bytes)
-        pcm = b"".join(pcm_chunks)
-        return _pcm_to_wav(pcm, sample_rate=voice.config.sample_rate)
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            voice.synthesize(text, wf)
+        return buf.getvalue()
 
     except ImportError:
         logger.warning("piper-tts not installed, falling back to espeak.")
