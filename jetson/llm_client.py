@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple
 import logging
+import base64
 import requests
 
 logger = logging.getLogger(__name__)
@@ -8,8 +9,8 @@ logger = logging.getLogger(__name__)
 
 class LLMClientBase(ABC):
     @abstractmethod
-    def chat(self, message: str) -> Tuple[Optional[str], Optional[dict]]:
-        """Send a message, return (response_text, latency_ms_dict) or (None, None) on failure."""
+    def chat(self, message: str) -> Tuple[Optional[str], Optional[bytes], Optional[dict]]:
+        """Return (response_text, wav_bytes, latency_ms_dict). wav_bytes is None if not available."""
         pass
 
     @abstractmethod
@@ -30,7 +31,7 @@ class CloudLLMClient(LLMClientBase):
         except Exception:
             return False
 
-    def chat(self, message: str) -> Tuple[Optional[str], Optional[dict]]:
+    def chat(self, message: str) -> Tuple[Optional[str], Optional[bytes], Optional[dict]]:
         try:
             r = requests.post(
                 f"{self.base_url}/chat",
@@ -39,10 +40,11 @@ class CloudLLMClient(LLMClientBase):
             )
             r.raise_for_status()
             data = r.json()
-            return data["response"], data.get("latency_ms")
+            wav = base64.b64decode(data["audio_b64"]) if data.get("audio_b64") else None
+            return data["response"], wav, data.get("latency_ms")
         except Exception as e:
             logger.error(f"CloudLLMClient error: {e}")
-            return None, None
+            return None, None, None
 
 
 # Placeholder — will be implemented when local LLM is deployed on Jetson
@@ -50,7 +52,7 @@ class LocalLLMClient(LLMClientBase):
     def is_available(self) -> bool:
         return False
 
-    def chat(self, message: str) -> Tuple[Optional[str], Optional[dict]]:
+    def chat(self, message: str) -> Tuple[Optional[str], Optional[bytes], Optional[dict]]:
         raise NotImplementedError("Local LLM not yet deployed")
 
 

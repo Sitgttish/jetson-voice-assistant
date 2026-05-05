@@ -2,6 +2,7 @@ import logging
 import sys
 import os
 import time
+import base64
 
 # Allow imports from gcp/ directory
 sys.path.insert(0, os.path.dirname(__file__))
@@ -9,6 +10,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import config
 from llm import create_llm
 from search import build_prompt_with_search, needs_search
+import tts as tts_module
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -27,7 +29,8 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
-    latency_ms: dict  # {"search_ms": float|None, "llm_ms": float, "total_ms": float}
+    audio_b64: str        # base64-encoded WAV bytes
+    latency_ms: dict      # {"search_ms": float|None, "llm_ms": float, "tts_ms": float, "total_ms": float}
 
 
 @app.on_event("startup")
@@ -57,19 +60,27 @@ async def chat(req: ChatRequest):
     response = llm.generate(prompt, system_prompt=config.SYSTEM_PROMPT)
     llm_ms = (time.perf_counter() - t_llm) * 1000
 
+    # TTS synthesis
+    t_tts = time.perf_counter()
+    wav = tts_module.synthesize(response)
+    tts_ms = (time.perf_counter() - t_tts) * 1000
+    audio_b64 = base64.b64encode(wav).decode() if wav else ""
+
     total_ms = (time.perf_counter() - t_total) * 1000
 
     logger.info(
         f"Latency — search: {f'{search_ms:.0f}ms' if search_ms else 'N/A'}, "
-        f"llm: {llm_ms:.0f}ms, total: {total_ms:.0f}ms"
+        f"llm: {llm_ms:.0f}ms, tts: {tts_ms:.0f}ms, total: {total_ms:.0f}ms"
     )
     logger.info(f"User: {req.message!r} -> Response: {response[:80]!r}...")
 
     return ChatResponse(
         response=response,
+        audio_b64=audio_b64,
         latency_ms={
             "search_ms": round(search_ms, 1) if search_ms is not None else None,
             "llm_ms": round(llm_ms, 1),
+            "tts_ms": round(tts_ms, 1),
             "total_ms": round(total_ms, 1),
         },
     )
