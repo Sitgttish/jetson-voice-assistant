@@ -59,9 +59,9 @@ async def chat(req: ChatRequest):
         if schedule_ctx:
             system_prompt += "\n\n" + schedule_ctx
 
-    # Web search (optional)
+    # Web search (optional) — skip if schedule already covers the query
     search_ms = None
-    if needs_search(req.message):
+    if needs_search(req.message) and not needs_schedule(req.message):
         t_search = time.perf_counter()
         prompt = build_prompt_with_search(req.message, max_results=config.SEARCH_MAX_RESULTS)
         search_ms = (time.perf_counter() - t_search) * 1000
